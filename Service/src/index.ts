@@ -7,6 +7,10 @@ import { connectDB } from "./config/db.js";
 import healthRoutes from "./routes/health.routes.js";
 import incidentRoutes from "./routes/incident.routes.js";
 import authRoutes from "./routes/auth.routes.js";
+import assignmentRoutes from "./routes/assignment.routes.js";
+import resourceRoutes from "./routes/resource.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
+
 
 import {
   notFoundHandler,
@@ -22,6 +26,10 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/api/health", healthRoutes);
 app.use("/api/incidents", incidentRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/assignments", assignmentRoutes);
+app.use("/api/resources", resourceRoutes);
+app.use("/api/notifications", notificationRoutes);
+
 
 app.use(notFoundHandler);
 app.use(errorHandler);
