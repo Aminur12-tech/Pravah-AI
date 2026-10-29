@@ -1,5 +1,5 @@
 
-const API_BASE_URL = "https://pravah-ai-1tc4.onrender.com/api/";
+const API_BASE_URL = "https://pravah-ai-1tc4.onrender.com/api";
 
 let authToken: string | null = null;
 
