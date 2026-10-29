@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import {
   Alert,
@@ -136,7 +135,9 @@ export default function LoginScreen({
 
             <TouchableOpacity
               onPress={() => setShowPassword((previous) => !previous)}
-              accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+              accessibilityLabel={
+                showPassword ? "Hide password" : "Show password"
+              }
             >
               <Text style={styles.showText}>
                 {showPassword ? "Hide" : "Show"}
@@ -169,12 +170,17 @@ export default function LoginScreen({
             <View style={styles.divider} />
           </View>
 
-          <TouchableOpacity style={styles.demoButton} onPress={onDemo}>
+          <TouchableOpacity
+            style={styles.demoButton}
+            onPress={onDemo}
+          >
             <Text style={styles.demoText}>Continue with Demo</Text>
           </TouchableOpacity>
 
           <View style={styles.signupRow}>
-            <Text style={styles.signupText}>Don't have an account? </Text>
+            <Text style={styles.signupText}>
+              Don't have an account?{" "}
+            </Text>
             <TouchableOpacity onPress={onSignUp}>
               <Text style={styles.signupLink}>Sign Up</Text>
             </TouchableOpacity>
