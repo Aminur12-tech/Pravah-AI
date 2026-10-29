@@ -52,6 +52,18 @@ type CreateIncidentResponse = {
   };
 };
 
+type AIAnalyzeResponse = {
+  success: boolean;
+  data: {
+    predicted_category: string;
+    ranked_categories: {
+      category: string;
+      score: number;
+    }[];
+    note?: string;
+  };
+};
+
 const categories: { label: string; value: IncidentCategory }[] = [
   { label: "Flood", value: "flood" },
   { label: "Fire", value: "fire" },
@@ -75,6 +87,27 @@ const needs: { label: string; value: UrgentNeed }[] = [
   { label: "First aid", value: "first_aid" },
 ];
 
+const aiCategoryMap: Record<string, IncidentCategory> = {
+  flood: "flood",
+  earthquake: "earthquake",
+  landslide: "landslide",
+  fire: "fire",
+  storm: "storm",
+  "road damage": "road_damage",
+  road_damage: "road_damage",
+  "waste or pollution": "waste",
+  waste_or_pollution: "waste",
+  waste: "waste",
+  "drainage problem": "drainage",
+  drainage_problem: "drainage",
+  drainage: "drainage",
+  "water shortage": "water_shortage",
+  water_shortage: "water_shortage",
+  other: "other",
+  "other emergency": "other",
+  other_emergency: "other",
+};
+
 export default function ReportFormScreen({
   onBack,
   onSubmit,
@@ -84,7 +117,24 @@ export default function ReportFormScreen({
   const [location, setLocation] = useState("26.1445, 91.7362");
   const [category, setCategory] = useState<IncidentCategory>("flood");
   const [selectedNeeds, setSelectedNeeds] = useState<UrgentNeed[]>([]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiSuggestion, setAiSuggestion] =
+    useState<IncidentCategory | null>(null);
+  const [aiScores, setAiScores] = useState<
+    { category: IncidentCategory; score: number }[]
+  >([]);
+
+  function handleDescriptionChange(value: string) {
+    setDescription(value);
+    setAiSuggestion(null);
+    setAiScores([]);
+  }
+
+  function handleCategoryChange(value: IncidentCategory) {
+    setCategory(value);
+  }
 
   function toggleNeed(need: UrgentNeed) {
     setSelectedNeeds((current) =>
@@ -94,13 +144,102 @@ export default function ReportFormScreen({
     );
   }
 
+  async function handleAnalyzeWithAI() {
+    const cleanDescription = description.trim();
+
+    if (cleanDescription.length < 5) {
+      Alert.alert(
+        "Description required",
+        "Enter at least 5 characters describing the incident."
+      );
+      return;
+    }
+
+    if (isAnalyzing || isSubmitting) {
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAiSuggestion(null);
+    setAiScores([]);
+
+    try {
+      const result = await apiRequest<AIAnalyzeResponse>("/ai/analyze", {
+        method: "POST",
+        body: {
+          description: cleanDescription,
+        },
+      });
+
+      if (!result.success || !result.data?.predicted_category) {
+        throw new Error("The AI service returned an invalid result.");
+      }
+
+      const predictedCategory =
+        aiCategoryMap[result.data.predicted_category];
+
+      if (!predictedCategory) {
+        throw new Error(
+          `Unsupported AI category: ${result.data.predicted_category}`
+        );
+      }
+
+      const rankedCategories = (result.data.ranked_categories ?? [])
+        .map((item) => {
+          const mappedCategory = aiCategoryMap[item.category];
+
+          if (!mappedCategory || !Number.isFinite(item.score)) {
+            return null;
+          }
+
+          return {
+            category: mappedCategory,
+            score: item.score,
+          };
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            category: IncidentCategory;
+            score: number;
+          } => item !== null
+        );
+
+      setAiSuggestion(predictedCategory);
+      setAiScores(rankedCategories);
+      setCategory(predictedCategory);
+
+      const label =
+        categories.find((item) => item.value === predictedCategory)
+          ?.label ?? "Other";
+
+      Alert.alert(
+        "AI analysis complete",
+        `Suggested category: ${label}\n\nPlease verify this suggestion before submitting your report.`
+      );
+    } catch (error) {
+      Alert.alert(
+        "AI analysis failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to analyze the incident. Please try again."
+      );
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }
+
   async function handleSubmit() {
     const cleanTitle = title.trim();
     const cleanDescription = description.trim();
     const cleanLocation = location.trim();
 
     if (cleanTitle.length < 5) {
-      Alert.alert("Title required", "Enter a title with at least 5 characters.");
+      Alert.alert(
+        "Title required",
+        "Enter a title with at least 5 characters."
+      );
       return;
     }
 
@@ -122,6 +261,10 @@ export default function ReportFormScreen({
 
     if (selectedNeeds.length > 8) {
       Alert.alert("Too many selections", "Select up to 8 urgent needs.");
+      return;
+    }
+
+    if (isAnalyzing || isSubmitting) {
       return;
     }
 
@@ -205,7 +348,7 @@ export default function ReportFormScreen({
             return (
               <Pressable
                 key={item.value}
-                onPress={() => setCategory(item.value)}
+                onPress={() => handleCategoryChange(item.value)}
                 style={[styles.chip, active && styles.activeChip]}
               >
                 <Text
@@ -220,6 +363,46 @@ export default function ReportFormScreen({
             );
           })}
         </View>
+
+        {aiSuggestion && (
+          <View style={styles.aiResult}>
+            <Text style={styles.aiResultTitle}>
+              ✨ AI suggestion:{" "}
+              {categories.find((item) => item.value === aiSuggestion)?.label}
+            </Text>
+
+            <Text style={styles.aiResultText}>
+              The category was selected automatically. Review the details and
+              choose another category if the suggestion is incorrect.
+            </Text>
+
+            {aiScores.length > 0 && (
+              <View style={styles.aiScores}>
+                <Text style={styles.aiScoresHeading}>
+                  Other model rankings
+                </Text>
+
+                {aiScores.slice(0, 3).map((item, index) => (
+                  <Text
+                    key={`${item.category}-${index}`}
+                    style={styles.aiScoreText}
+                  >
+                    {categories.find(
+                      (categoryItem) =>
+                        categoryItem.value === item.category
+                    )?.label ?? item.category}
+                    {" — "}
+                    {(item.score * 100).toFixed(1)}%
+                  </Text>
+                ))}
+
+                <Text style={styles.aiDisclaimer}>
+                  These are model ranking scores, not calibrated probabilities.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         <Text style={styles.label}>Location or address *</Text>
         <TextInput
@@ -241,12 +424,34 @@ export default function ReportFormScreen({
           placeholder="Describe the incident, its severity, and any immediate danger..."
           placeholderTextColor="#8A94A6"
           value={description}
-          onChangeText={setDescription}
+          onChangeText={handleDescriptionChange}
           multiline
           textAlignVertical="top"
           maxLength={5000}
         />
         <Text style={styles.counter}>{description.length}/5000</Text>
+
+        <Pressable
+          onPress={handleAnalyzeWithAI}
+          disabled={isAnalyzing || isSubmitting}
+          style={[
+            styles.aiButton,
+            (isAnalyzing || isSubmitting) && styles.disabledButton,
+          ]}
+        >
+          {isAnalyzing ? (
+            <View style={styles.aiButtonContent}>
+              <ActivityIndicator color="#167D76" />
+              <Text style={styles.aiButtonText}>Analyzing incident...</Text>
+            </View>
+          ) : (
+            <Text style={styles.aiButtonText}>✨ Analyze with AI</Text>
+          )}
+        </Pressable>
+
+        <Text style={styles.helper}>
+          AI provides a category suggestion. Check it before submitting.
+        </Text>
 
         <Text style={styles.label}>Urgent needs</Text>
         <Text style={styles.helper}>
@@ -288,10 +493,10 @@ export default function ReportFormScreen({
 
         <Pressable
           onPress={handleSubmit}
-          disabled={isSubmitting}
+          disabled={isSubmitting || isAnalyzing}
           style={[
             styles.submitButton,
-            isSubmitting && styles.disabledButton,
+            (isSubmitting || isAnalyzing) && styles.disabledButton,
           ]}
         >
           {isSubmitting ? (
@@ -303,7 +508,7 @@ export default function ReportFormScreen({
 
         <Pressable
           onPress={onBack}
-          disabled={isSubmitting}
+          disabled={isSubmitting || isAnalyzing}
           style={styles.cancelButton}
         >
           <Text style={styles.cancelText}>Cancel</Text>
@@ -413,6 +618,70 @@ const styles = StyleSheet.create({
   activeChipText: {
     color: "#12665F",
     fontWeight: "700",
+  },
+  aiButton: {
+    backgroundColor: "#E5F5F2",
+    borderWidth: 1,
+    borderColor: "#167D76",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+    minHeight: 48,
+  },
+  aiButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  aiButtonText: {
+    color: "#12665F",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  aiResult: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#B9E4DB",
+    borderRadius: 12,
+    padding: 13,
+    marginTop: 12,
+  },
+  aiResultTitle: {
+    color: "#12665F",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  aiResultText: {
+    color: "#667085",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 5,
+  },
+  aiScores: {
+    borderTopWidth: 1,
+    borderTopColor: "#E5EAF0",
+    marginTop: 12,
+    paddingTop: 10,
+  },
+  aiScoresHeading: {
+    color: "#253047",
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 5,
+  },
+  aiScoreText: {
+    color: "#475467",
+    fontSize: 12,
+    marginTop: 4,
+  },
+  aiDisclaimer: {
+    color: "#7B8495",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 8,
   },
   notice: {
     backgroundColor: "#FFF7E8",

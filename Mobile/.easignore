@@ -1,0 +1,8 @@
+
+AI-Service/model/
+AI-Service/.venv/
+AI-Service/__pycache__/
+**/*.safetensors
+**/node_modules/
+**/.git/
+**/__pycache__/
