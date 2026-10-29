@@ -10,12 +10,14 @@ import authRoutes from "./routes/auth.routes.js";
 import assignmentRoutes from "./routes/assignment.routes.js";
 import resourceRoutes from "./routes/resource.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 
 import {
   notFoundHandler,
   errorHandler,
 } from "./middleware/error.middleware.js";
+
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -29,6 +31,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/resources", resourceRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/ai", aiRoutes);
+
 
 
 app.use(notFoundHandler);

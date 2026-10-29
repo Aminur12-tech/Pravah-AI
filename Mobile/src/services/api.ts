@@ -1,5 +1,5 @@
 
-const API_BASE_URL = "http://192.168.31.8:4000/api";
+const API_BASE_URL = "http://192.168.1.6:4000/api";
 
 let authToken: string | null = null;
 

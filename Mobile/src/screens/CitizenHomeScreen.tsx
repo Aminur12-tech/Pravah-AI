@@ -150,7 +150,7 @@ export default function CitizenHomeScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5FBFA" />
+      <StatusBar barStyle="dark-content" />
 
       <View style={styles.phoneStatus}>
         <Text style={styles.statusText}>PRAVAH AI</Text>
