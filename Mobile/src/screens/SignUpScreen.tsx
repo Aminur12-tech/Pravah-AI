@@ -13,19 +13,26 @@ import {
   View,
 } from "react-native";
 
-type AccountRole = "Citizen" | "Project Owner" | "Resource Provider";
+export type AccountRole =
+  | "Citizen"
+  | "Project Owner"
+  | "Resource Provider";
+
+export type RegisterDetails = {
+  fullName: string;
+  email: string;
+  phone: string;
+  password: string;
+  confirmPassword: string;
+  role: AccountRole;
+  organization: string;
+  locationEnabled: boolean;
+};
 
 type SignUpScreenProps = {
   onBack: () => void;
   onLogin: () => void;
-  onRegister: (details: {
-    fullName: string;
-    email: string;
-    phone: string;
-    password: string;
-    role: AccountRole;
-    organization: string;
-  }) => void;
+  onRegister: (details: RegisterDetails) => Promise<void>;
 };
 
 export default function SignUpScreen({
@@ -42,8 +49,9 @@ export default function SignUpScreen({
   const [organization, setOrganization] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [locationEnabled, setLocationEnabled] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     if (
       !fullName.trim() ||
       !email.trim() ||
@@ -60,10 +68,18 @@ export default function SignUpScreen({
       return;
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       Alert.alert(
         "Password too short",
-        "Your password must contain at least 6 characters."
+        "Your password must contain at least 8 characters."
+      );
+      return;
+    }
+
+    if (password.length > 72) {
+      Alert.alert(
+        "Password too long",
+        "Please use a password of 72 characters or fewer."
       );
       return;
     }
@@ -73,28 +89,60 @@ export default function SignUpScreen({
       return;
     }
 
-    if (role === "Project Owner" && !organization.trim()) {
+    if (role === "Project Owner") {
       Alert.alert(
-        "Organization required",
-        "Please enter your organization or project name."
+        "Project Owner account",
+        "Project Owner accounts must be created by an administrator. Please register as a Citizen or Resource Provider."
       );
       return;
     }
 
-    onRegister({
-      fullName: fullName.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-      password,
-      role,
-      organization: organization.trim(),
-    });
+    if (role === "Resource Provider" && !organization.trim()) {
+      Alert.alert(
+        "Organization required",
+        "Please enter your organization name."
+      );
+      return;
+    }
+
+    if (locationEnabled) {
+      Alert.alert(
+        "Location setup required",
+        "Location permission and coordinate capture will be connected next. Please turn off this switch to register for now."
+      );
+      return;
+    }
+
+    if (isLoading) return;
+
+    try {
+      setIsLoading(true);
+
+      await onRegister({
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        password,
+        confirmPassword,
+        role,
+        organization: organization.trim(),
+        locationEnabled: false,
+      });
+    } catch (error) {
+      Alert.alert(
+        "Registration failed",
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-
+      <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -107,6 +155,7 @@ export default function SignUpScreen({
           <TouchableOpacity
             style={styles.backButton}
             onPress={onBack}
+            disabled={isLoading}
             accessibilityLabel="Back to welcome screen"
           >
             <Text style={styles.backText}>‹</Text>
@@ -123,6 +172,7 @@ export default function SignUpScreen({
           </Text>
 
           <Text style={styles.label}>I am registering as</Text>
+
           <View style={styles.roleList}>
             {(
               ["Citizen", "Project Owner", "Resource Provider"] as AccountRole[]
@@ -134,6 +184,7 @@ export default function SignUpScreen({
                   role === item && styles.roleButtonActive,
                 ]}
                 onPress={() => setRole(item)}
+                disabled={isLoading}
               >
                 <View
                   style={[
@@ -165,6 +216,7 @@ export default function SignUpScreen({
             placeholderTextColor="#91A2AE"
             autoCapitalize="words"
             autoCorrect={false}
+            editable={!isLoading}
           />
 
           <Text style={styles.label}>Email Address *</Text>
@@ -177,6 +229,7 @@ export default function SignUpScreen({
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!isLoading}
           />
 
           <Text style={styles.label}>Mobile Number *</Text>
@@ -187,6 +240,7 @@ export default function SignUpScreen({
             placeholder="Enter your mobile number"
             placeholderTextColor="#91A2AE"
             keyboardType="phone-pad"
+            editable={!isLoading}
           />
 
           {role === "Project Owner" && (
@@ -199,22 +253,22 @@ export default function SignUpScreen({
                 placeholder="Enter organization or project name"
                 placeholderTextColor="#91A2AE"
                 autoCapitalize="words"
+                editable={!isLoading}
               />
             </>
           )}
 
           {role === "Resource Provider" && (
             <>
-              <Text style={styles.label}>
-                Organization / Resource Name (optional)
-              </Text>
+              <Text style={styles.label}>Organization Name *</Text>
               <TextInput
                 style={styles.input}
                 value={organization}
                 onChangeText={setOrganization}
-                placeholder="Organization or resources you provide"
+                placeholder="Enter your organization name"
                 placeholderTextColor="#91A2AE"
                 autoCapitalize="words"
+                editable={!isLoading}
               />
             </>
           )}
@@ -225,14 +279,17 @@ export default function SignUpScreen({
               style={styles.passwordInput}
               value={password}
               onChangeText={setPassword}
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
               placeholderTextColor="#91A2AE"
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!isLoading}
             />
+
             <TouchableOpacity
               onPress={() => setShowPassword((previous) => !previous)}
+              disabled={isLoading}
             >
               <Text style={styles.showText}>
                 {showPassword ? "Hide" : "Show"}
@@ -250,39 +307,48 @@ export default function SignUpScreen({
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoCorrect={false}
+            editable={!isLoading}
           />
 
           <View style={styles.locationRow}>
             <View style={styles.locationTextContainer}>
               <Text style={styles.locationTitle}>Enable location</Text>
               <Text style={styles.locationSubtitle}>
-                Allow location features for local alerts and reports.
+                Location access will be connected in the next step.
               </Text>
             </View>
+
             <Switch
               value={locationEnabled}
               onValueChange={setLocationEnabled}
+              disabled={isLoading}
               trackColor={{ false: "#DCE6E6", true: "#82CBB2" }}
               thumbColor={locationEnabled ? "#087A5D" : "#F4F4F4"}
             />
           </View>
 
           <Text style={styles.note}>
-            * Required fields. By registering, you agree to use PRAVAH AI
-            responsibly.
+            * Required fields. Project Owner accounts require administrator
+            creation. Resource Provider accounts require verification.
           </Text>
 
           <TouchableOpacity
-            style={styles.registerButton}
+            style={[
+              styles.registerButton,
+              isLoading && styles.disabledButton,
+            ]}
             onPress={handleRegister}
             activeOpacity={0.85}
+            disabled={isLoading}
           >
-            <Text style={styles.registerButtonText}>Create Account</Text>
+            <Text style={styles.registerButtonText}>
+              {isLoading ? "Creating account..." : "Create Account"}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.loginRow}>
             <Text style={styles.loginText}>Already have an account? </Text>
-            <TouchableOpacity onPress={onLogin}>
+            <TouchableOpacity onPress={onLogin} disabled={isLoading}>
               <Text style={styles.loginLink}>Login</Text>
             </TouchableOpacity>
           </View>
@@ -293,13 +359,8 @@ export default function SignUpScreen({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  keyboardView: { flex: 1 },
   content: {
     flexGrow: 1,
     paddingHorizontal: 20,
@@ -312,11 +373,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 8,
   },
-  backText: {
-    color: "#174A40",
-    fontSize: 32,
-    lineHeight: 34,
-  },
+  backText: { color: "#174A40", fontSize: 32, lineHeight: 34 },
   logo: {
     width: 40,
     height: 40,
@@ -340,11 +397,7 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: "900",
   },
-  title: {
-    color: "#173F35",
-    fontSize: 25,
-    fontWeight: "800",
-  },
+  title: { color: "#173F35", fontSize: 25, fontWeight: "800" },
   subtitle: {
     color: "#537064",
     fontSize: 13,
@@ -359,10 +412,7 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     marginTop: 3,
   },
-  roleList: {
-    gap: 8,
-    marginBottom: 17,
-  },
+  roleList: { gap: 8, marginBottom: 17 },
   roleButton: {
     minHeight: 42,
     flexDirection: "row",
@@ -387,24 +437,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 10,
   },
-  radioOuterActive: {
-    borderColor: "#087A5D",
-  },
+  radioOuterActive: { borderColor: "#087A5D" },
   radioInner: {
     width: 9,
     height: 9,
     borderRadius: 5,
     backgroundColor: "#087A5D",
   },
-  roleText: {
-    color: "#526B70",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  roleTextActive: {
-    color: "#087A5D",
-    fontWeight: "800",
-  },
+  roleText: { color: "#526B70", fontSize: 12, fontWeight: "600" },
+  roleTextActive: { color: "#087A5D", fontWeight: "800" },
   input: {
     minHeight: 44,
     borderWidth: 1,
@@ -425,12 +466,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 14,
   },
-  passwordInput: {
-    flex: 1,
-    minHeight: 42,
-    fontSize: 13,
-    color: "#173F35",
-  },
+  passwordInput: { flex: 1, minHeight: 42, fontSize: 13, color: "#173F35" },
   showText: {
     color: "#087A5D",
     fontSize: 11,
@@ -447,15 +483,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 12,
   },
-  locationTextContainer: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  locationTitle: {
-    color: "#173F35",
-    fontSize: 12,
-    fontWeight: "800",
-  },
+  locationTextContainer: { flex: 1, paddingRight: 10 },
+  locationTitle: { color: "#173F35", fontSize: 12, fontWeight: "800" },
   locationSubtitle: {
     color: "#60766D",
     fontSize: 11,
@@ -475,23 +504,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  registerButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "800",
-  },
+  disabledButton: { opacity: 0.65 },
+  registerButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
   loginRow: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 20,
   },
-  loginText: {
-    color: "#526B70",
-    fontSize: 11,
-  },
-  loginLink: {
-    color: "#087A5D",
-    fontSize: 11,
-    fontWeight: "800",
-  },
+  loginText: { color: "#526B70", fontSize: 11 },
+  loginLink: { color: "#087A5D", fontSize: 11, fontWeight: "800" },
 });

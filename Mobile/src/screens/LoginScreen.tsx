@@ -12,17 +12,39 @@ import {
   View,
 } from "react-native";
 
-type Role = "Citizen" | "Project Owner";
+import { apiRequest, setAuthToken } from "../services/api";
+
+export type BackendRole =
+  | "citizen"
+  | "project_owner"
+  | "resource_provider";
+
+type LoginRole = "Citizen" | "Project Owner" | "Resource Provider";
+
+type LoginResponse = {
+  success: boolean;
+  token: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    role: BackendRole;
+    providerVerified: boolean;
+  };
+};
 
 type LoginScreenProps = {
   onBack: () => void;
   onSignUp: () => void;
   onDemo: () => void;
-  onLogin: (details: {
-    identifier: string;
-    password: string;
-    role: Role;
-  }) => void;
+  onLogin: (role: BackendRole) => void;
+};
+
+const roleToBackend: Record<LoginRole, BackendRole> = {
+  Citizen: "citizen",
+  "Project Owner": "project_owner",
+  "Resource Provider": "resource_provider",
 };
 
 function Logo() {
@@ -40,31 +62,74 @@ export default function LoginScreen({
   onDemo,
   onLogin,
 }: LoginScreenProps) {
-  const [role, setRole] = useState<Role>("Citizen");
+  const [role, setRole] = useState<LoginRole>("Citizen");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
-    if (!identifier.trim() || !password.trim()) {
-      Alert.alert(
-        "Missing details",
-        "Enter your email/mobile number and password."
-      );
+  const handleLogin = async () => {
+    const email = identifier.trim().toLowerCase();
+
+    if (!email || !password) {
+      Alert.alert("Missing details", "Enter your email address and password.");
       return;
     }
 
-    onLogin({
-      identifier: identifier.trim(),
-      password,
-      role,
-    });
+    if (isLoading) return;
+
+    try {
+      setIsLoading(true);
+
+      const response = await apiRequest<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: { email, password },
+      });
+
+      if (!response.token || !response.user) {
+        throw new Error("Invalid login response from the server.");
+      }
+
+      const expectedRole = roleToBackend[role];
+
+      if (response.user.role !== expectedRole) {
+        Alert.alert(
+          "Role mismatch",
+          "The selected role does not match your account. Please select the correct role."
+        );
+        return;
+      }
+
+      if (
+        response.user.role === "resource_provider" &&
+        !response.user.providerVerified
+      ) {
+        Alert.alert(
+          "Verification pending",
+          "Your account is registered, but provider verification is still pending."
+        );
+        return;
+      }
+
+      setAuthToken(response.token);
+      onLogin(response.user.role);
+
+      Alert.alert("Login successful", `Welcome, ${response.user.name}!`);
+    } catch (error) {
+      Alert.alert(
+        "Login failed",
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-
+      <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -77,6 +142,7 @@ export default function LoginScreen({
           <TouchableOpacity
             style={styles.backButton}
             onPress={onBack}
+            disabled={isLoading}
             accessibilityLabel="Back to welcome screen"
           >
             <Text style={styles.backText}>‹</Text>
@@ -87,8 +153,10 @@ export default function LoginScreen({
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to your account</Text>
 
-          <View style={styles.roleRow}>
-            {(["Citizen", "Project Owner"] as Role[]).map((item) => (
+          <View style={styles.roleList}>
+            {(
+              ["Citizen", "Project Owner", "Resource Provider"] as LoginRole[]
+            ).map((item) => (
               <TouchableOpacity
                 key={item}
                 style={[
@@ -96,6 +164,7 @@ export default function LoginScreen({
                   role === item && styles.roleButtonActive,
                 ]}
                 onPress={() => setRole(item)}
+                disabled={isLoading}
               >
                 <Text
                   style={[
@@ -109,16 +178,18 @@ export default function LoginScreen({
             ))}
           </View>
 
-          <Text style={styles.label}>Email or Mobile Number</Text>
+          <Text style={styles.label}>Email Address</Text>
           <TextInput
             style={styles.input}
             value={identifier}
             onChangeText={setIdentifier}
-            placeholder="Enter your email or mobile"
+            placeholder="Enter your email address"
             placeholderTextColor="#91A2AE"
             autoCapitalize="none"
             keyboardType="email-address"
             autoCorrect={false}
+            editable={!isLoading}
+            returnKeyType="next"
           />
 
           <Text style={styles.label}>Password</Text>
@@ -131,10 +202,15 @@ export default function LoginScreen({
               placeholderTextColor="#91A2AE"
               secureTextEntry={!showPassword}
               autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isLoading}
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
             />
 
             <TouchableOpacity
               onPress={() => setShowPassword((previous) => !previous)}
+              disabled={isLoading}
               accessibilityLabel={
                 showPassword ? "Hide password" : "Show password"
               }
@@ -153,15 +229,22 @@ export default function LoginScreen({
                 "Password recovery will be added later."
               )
             }
+            disabled={isLoading}
           >
             <Text style={styles.forgotText}>Forgot Password?</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.loginButton}
+            style={[
+              styles.loginButton,
+              isLoading && styles.loginButtonDisabled,
+            ]}
             onPress={handleLogin}
+            disabled={isLoading}
           >
-            <Text style={styles.loginButtonText}>Login</Text>
+            <Text style={styles.loginButtonText}>
+              {isLoading ? "Signing in..." : "Login"}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.orRow}>
@@ -173,15 +256,14 @@ export default function LoginScreen({
           <TouchableOpacity
             style={styles.demoButton}
             onPress={onDemo}
+            disabled={isLoading}
           >
             <Text style={styles.demoText}>Continue with Demo</Text>
           </TouchableOpacity>
 
           <View style={styles.signupRow}>
-            <Text style={styles.signupText}>
-              Don't have an account?{" "}
-            </Text>
-            <TouchableOpacity onPress={onSignUp}>
+            <Text style={styles.signupText}>Don't have an account? </Text>
+            <TouchableOpacity onPress={onSignUp} disabled={isLoading}>
               <Text style={styles.signupLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
@@ -192,13 +274,8 @@ export default function LoginScreen({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  keyboardView: { flex: 1 },
   content: {
     flexGrow: 1,
     paddingHorizontal: 20,
@@ -211,11 +288,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  backText: {
-    color: "#174A40",
-    fontSize: 32,
-    lineHeight: 34,
-  },
+  backText: { color: "#174A40", fontSize: 32, lineHeight: 34 },
   logo: {
     width: 38,
     height: 38,
@@ -239,41 +312,25 @@ const styles = StyleSheet.create({
     fontSize: 29,
     fontWeight: "900",
   },
-  title: {
-    color: "#173F35",
-    fontSize: 25,
-    fontWeight: "800",
-  },
+  title: { color: "#173F35", fontSize: 25, fontWeight: "800" },
   subtitle: {
     color: "#537064",
     fontSize: 13,
     marginTop: 5,
     marginBottom: 25,
   },
-  roleRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 24,
-  },
+  roleList: { gap: 8, marginBottom: 24 },
   roleButton: {
-    flex: 1,
-    height: 39,
+    minHeight: 39,
     borderRadius: 9,
     backgroundColor: "#F0F4F5",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 10,
   },
-  roleButtonActive: {
-    backgroundColor: "#087A5D",
-  },
-  roleText: {
-    color: "#526B70",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  roleTextActive: {
-    color: "#FFFFFF",
-  },
+  roleButtonActive: { backgroundColor: "#087A5D" },
+  roleText: { color: "#526B70", fontSize: 12, fontWeight: "600" },
+  roleTextActive: { color: "#FFFFFF" },
   label: {
     color: "#526B70",
     fontSize: 12,
@@ -299,26 +356,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 12,
   },
-  passwordInput: {
-    flex: 1,
-    fontSize: 13,
-    color: "#173F35",
-  },
-  showText: {
-    color: "#087A5D",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  forgotButton: {
-    alignSelf: "flex-end",
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  forgotText: {
-    color: "#087A5D",
-    fontSize: 11,
-    fontWeight: "700",
-  },
+  passwordInput: { flex: 1, fontSize: 13, color: "#173F35" },
+  showText: { color: "#087A5D", fontSize: 11, fontWeight: "700" },
+  forgotButton: { alignSelf: "flex-end", marginTop: 10, marginBottom: 20 },
+  forgotText: { color: "#087A5D", fontSize: 11, fontWeight: "700" },
   loginButton: {
     height: 45,
     backgroundColor: "#087A5D",
@@ -326,26 +367,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  loginButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "800",
-  },
+  loginButtonDisabled: { opacity: 0.7 },
+  loginButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
   orRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     marginVertical: 15,
   },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#E3EAED",
-  },
-  orText: {
-    color: "#60766D",
-    fontSize: 12,
-  },
+  divider: { flex: 1, height: 1, backgroundColor: "#E3EAED" },
+  orText: { color: "#60766D", fontSize: 12 },
   demoButton: {
     height: 44,
     borderRadius: 10,
@@ -354,23 +385,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  demoText: {
-    color: "#173F35",
-    fontSize: 13,
-    fontWeight: "700",
-  },
+  demoText: { color: "#173F35", fontSize: 13, fontWeight: "700" },
   signupRow: {
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 22,
   },
-  signupText: {
-    color: "#526B70",
-    fontSize: 11,
-  },
-  signupLink: {
-    color: "#087A5D",
-    fontSize: 11,
-    fontWeight: "800",
-  },
+  signupText: { color: "#526B70", fontSize: 11 },
+  signupLink: { color: "#087A5D", fontSize: 11, fontWeight: "800" },
 });
