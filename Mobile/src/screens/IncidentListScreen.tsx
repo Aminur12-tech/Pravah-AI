@@ -1,254 +1,314 @@
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  SafeAreaView,
-  View,
-  Text,
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
   StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
+  Text,
+  View,
 } from "react-native";
-import { OwnerBottomNav } from "./OwnerDashboardScreen";
+
+import { apiRequest } from "../services/api";
+
+type Incident = {
+  _id: string;
+  title: string;
+  description: string;
+  category: string;
+  status?: string;
+  location: {
+    address: string;
+  };
+  urgentNeeds?: string[];
+  createdAt?: string;
+};
+
+type IncidentListResponse = {
+  success: boolean;
+  data: Incident[];
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+};
 
 type Props = {
   onBack: () => void;
-  onOpenIncident: () => void;
-  onDashboard: () => void;
-  onResources: () => void;
-  onProfile: () => void;
+  onSelectIncident: (id: string) => void;
 };
 
-type Priority = "All" | "High" | "Medium" | "Low";
-
-const incidents = [
-  {
-    id: "PRAV-001",
-    title: "Water entering homes near the river",
-    category: "Flood",
-    priority: "High",
-    time: "2h ago",
-    icon: "💧",
-    color: "#1688F8",
-  },
-  {
-    id: "PRAV-002",
-    title: "Minor tremors felt in the area",
-    category: "Earthquake",
-    priority: "Medium",
-    time: "5h ago",
-    icon: "🌋",
-    color: "#F58A43",
-  },
-  {
-    id: "PRAV-003",
-    title: "Road blocked by landslide",
-    category: "Landslide",
-    priority: "High",
-    time: "1d ago",
-    icon: "⛰️",
-    color: "#8B6253",
-  },
-  {
-    id: "PRAV-004",
-    title: "Fire in residential area",
-    category: "Fire",
-    priority: "Medium",
-    time: "1d ago",
-    icon: "🔥",
-    color: "#EF6262",
-  },
-  {
-    id: "PRAV-005",
-    title: "Drainage blockage",
-    category: "Drainage",
-    priority: "Low",
-    time: "2d ago",
-    icon: "🌊",
-    color: "#16A6B7",
-  },
-];
+function readable(value?: string): string {
+  if (!value) return "Unknown";
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
 
 export default function IncidentListScreen({
   onBack,
-  onOpenIncident,
-  onDashboard,
-  onResources,
-  onProfile,
+  onSelectIncident,
 }: Props) {
-  const [filter, setFilter] = useState<Priority>("All");
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
-  const filteredIncidents = incidents.filter(
-    (incident) => filter === "All" || incident.priority === filter
-  );
+  const loadIncidents = useCallback(async () => {
+    try {
+      setError("");
+
+      const result = await apiRequest<IncidentListResponse>(
+        "/incidents?page=1&limit=50"
+      );
+
+      setIncidents(result.data ?? []);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Unable to load incidents."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadIncidents();
+  }, [loadIncidents]);
+
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    void loadIncidents();
+  }, [loadIncidents]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#064D48" />
+    <View style={styles.container}>
+      <Pressable onPress={onBack} style={styles.backButton}>
+        <Text style={styles.backText}>‹ Back</Text>
+      </Pressable>
 
-      <View style={styles.hero}>
-        <View style={styles.statusRow}>
-          <Text style={styles.time}>9:41</Text>
-          <Text style={styles.statusIcons}>▴  ▰  ●</Text>
+      <Text style={styles.eyebrow}>COMMUNITY INCIDENTS</Text>
+      <Text style={styles.heading}>Incident reports</Text>
+      <Text style={styles.subtitle}>
+        Latest reports received by PRAVAH AI.
+      </Text>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#167D76" />
+          <Text style={styles.message}>Loading reports...</Text>
         </View>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backArrow}>‹</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Incidents</Text>
-          <View style={styles.headerSpacer} />
+      ) : error ? (
+        <View style={styles.center}>
+          <Text style={styles.errorTitle}>Could not load reports</Text>
+          <Text style={styles.message}>{error}</Text>
+          <Pressable onPress={refresh} style={styles.retryButton}>
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
         </View>
-      </View>
-
-      <View style={styles.filterRow}>
-        {(["All", "High", "Medium", "Low"] as Priority[]).map((item) => (
-          <TouchableOpacity
-            key={item}
-            onPress={() => setFilter(item)}
-            style={[styles.filterButton, filter === item && styles.selectedFilter]}
-          >
-            <Text style={[styles.filterText, filter === item && styles.selectedFilterText]}>
-              {item}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-      >
-        {filteredIncidents.map((incident) => (
-          <TouchableOpacity
-            key={incident.id}
-            style={styles.card}
-            onPress={onOpenIncident}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.iconBox, { backgroundColor: `${incident.color}20` }]}>
-              <Text style={styles.emoji}>{incident.icon}</Text>
+      ) : (
+        <FlatList
+          data={incidents}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={
+            incidents.length === 0 ? styles.emptyList : styles.list
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refresh}
+              tintColor="#167D76"
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.center}>
+              <Text style={styles.emptyTitle}>No reports yet</Text>
+              <Text style={styles.message}>
+                Submitted incident reports will appear here.
+              </Text>
             </View>
-
-            <View style={styles.incidentInfo}>
-              <Text style={styles.incidentTitle}>{incident.title}</Text>
-              <Text style={styles.incidentId}>{incident.id}</Text>
-              <View style={styles.metaRow}>
-                <Text style={[styles.category, { color: incident.color }]}>
-                  {incident.category}
+          }
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => onSelectIncident(item._id)}
+              style={styles.card}
+            >
+              <View style={styles.cardHeader}>
+                <Text style={styles.category}>
+                  {readable(item.category)}
                 </Text>
-                <PriorityBadge priority={incident.priority} />
+                <Text style={styles.status}>
+                  {readable(item.status ?? "submitted")}
+                </Text>
               </View>
-              <Text style={styles.timeAgo}>{incident.time}</Text>
-            </View>
 
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        ))}
+              <Text style={styles.cardTitle}>{item.title}</Text>
+              <Text style={styles.description} numberOfLines={3}>
+                {item.description}
+              </Text>
 
-        {filteredIncidents.length === 0 && (
-          <Text style={styles.emptyText}>No incidents match this filter.</Text>
-        )}
-      </ScrollView>
+              <Text style={styles.location} numberOfLines={2}>
+                📍 {item.location?.address ?? "Location not provided"}
+              </Text>
 
-      <OwnerBottomNav
-        active="Incidents"
-        onDashboard={onDashboard}
-        onIncidents={onBack}
-        onResources={onResources}
-        onProfile={onProfile}
-      />
-    </SafeAreaView>
-  );
-}
+              {item.createdAt ? (
+                <Text style={styles.date}>
+                  {new Date(item.createdAt).toLocaleString()}
+                </Text>
+              ) : null}
 
-function PriorityBadge({ priority }: { priority: string }) {
-  const color =
-    priority === "High"
-      ? "#E94E55"
-      : priority === "Medium"
-      ? "#C8872D"
-      : "#168B69";
-
-  return (
-    <View style={[styles.priorityBadge, { backgroundColor: `${color}18` }]}>
-      <Text style={[styles.priorityText, { color }]}>{priority}</Text>
+              <Text style={styles.openText}>View details →</Text>
+            </Pressable>
+          )}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F3F8F7" },
-  hero: {
-    backgroundColor: "#064D48",
-    paddingHorizontal: 17,
-    paddingBottom: 12,
-    borderBottomLeftRadius: 17,
-    borderBottomRightRadius: 17,
-  },
-  statusRow: {
-    height: 25,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  time: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
-  statusIcons: { color: "#FFFFFF", fontSize: 10 },
-  header: {
-    height: 43,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  backButton: { width: 30 },
-  backArrow: { fontSize: 30, color: "#FFFFFF" },
-  headerTitle: { fontSize: 17, color: "#FFFFFF", fontWeight: "800" },
-  headerSpacer: { width: 30 },
-  filterRow: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginTop: 13,
-    marginBottom: 12,
-    padding: 4,
-    backgroundColor: "#E5F0ED",
-    borderRadius: 12,
-  },
-  filterButton: {
+  container: {
     flex: 1,
-    paddingVertical: 9,
-    borderRadius: 9,
-    alignItems: "center",
+    backgroundColor: "#F5F7FB",
+    paddingTop: 12,
   },
-  selectedFilter: { backgroundColor: "#087C68" },
-  filterText: { fontSize: 11, fontWeight: "700", color: "#58756E" },
-  selectedFilterText: { color: "#FFFFFF" },
-  list: { paddingHorizontal: 14, paddingBottom: 16, gap: 10 },
+  backButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingHorizontal: 22,
+    marginBottom: 16,
+  },
+  backText: {
+    color: "#344054",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  eyebrow: {
+    color: "#167D76",
+    fontSize: 11,
+    letterSpacing: 2,
+    fontWeight: "800",
+    marginHorizontal: 22,
+    marginBottom: 9,
+  },
+  heading: {
+    color: "#172033",
+    fontSize: 27,
+    fontWeight: "800",
+    marginHorizontal: 22,
+  },
+  subtitle: {
+    color: "#667085",
+    fontSize: 14,
+    marginHorizontal: 22,
+    marginTop: 7,
+    marginBottom: 18,
+  },
+  list: {
+    paddingHorizontal: 18,
+    paddingBottom: 30,
+  },
+  emptyList: {
+    flexGrow: 1,
+    justifyContent: "center",
+    padding: 24,
+  },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    minHeight: 92,
     backgroundColor: "#FFFFFF",
+    borderRadius: 17,
+    padding: 17,
+    marginBottom: 13,
     borderWidth: 1,
-    borderColor: "#E1ECE8",
-    borderRadius: 14,
+    borderColor: "#E5EAF1",
   },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  category: {
+    color: "#167D76",
+    backgroundColor: "#DDF5F0",
+    overflow: "hidden",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  status: {
+    color: "#667085",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  cardTitle: {
+    color: "#172033",
+    fontSize: 17,
+    fontWeight: "800",
+    marginBottom: 7,
+  },
+  description: {
+    color: "#667085",
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  location: {
+    color: "#475467",
+    fontSize: 12,
+    marginTop: 12,
+    lineHeight: 18,
+  },
+  date: {
+    color: "#98A2B3",
+    fontSize: 11,
+    marginTop: 9,
+  },
+  openText: {
+    color: "#167D76",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 13,
+  },
+  center: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    padding: 24,
   },
-  emoji: { fontSize: 18 },
-  incidentInfo: { flex: 1 },
-  incidentTitle: { fontSize: 11, lineHeight: 16, fontWeight: "800", color: "#294D47" },
-  incidentId: { fontSize: 9, color: "#8AA09A", marginTop: 4 },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 },
-  category: { fontSize: 10, fontWeight: "700" },
-  priorityBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 7 },
-  priorityText: { fontSize: 9, fontWeight: "800" },
-  timeAgo: { fontSize: 9, color: "#81938F", marginTop: 5 },
-  chevron: { fontSize: 22, color: "#8CA6A1", marginLeft: 5 },
-  emptyText: { textAlign: "center", padding: 30, color: "#81938F", fontSize: 12 },
+  message: {
+    color: "#667085",
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  emptyTitle: {
+    color: "#172033",
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  errorTitle: {
+    color: "#B42318",
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#167D76",
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 18,
+  },
+  retryText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
 });

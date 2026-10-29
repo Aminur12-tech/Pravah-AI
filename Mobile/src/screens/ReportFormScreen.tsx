@@ -1,523 +1,462 @@
 
 import React, { useState } from "react";
 import {
-  SafeAreaView,
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  StatusBar,
+  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+
+import { apiRequest } from "../services/api";
 
 type Props = {
   onBack: () => void;
   onSubmit: () => void;
 };
 
-type Urgency = "Water" | "Food" | "Rescue";
+type IncidentCategory =
+  | "flood"
+  | "earthquake"
+  | "landslide"
+  | "fire"
+  | "storm"
+  | "road_damage"
+  | "waste"
+  | "drainage"
+  | "water_shortage"
+  | "other";
+
+type UrgentNeed =
+  | "drinking_water"
+  | "food"
+  | "rescue"
+  | "medical_help"
+  | "shelter"
+  | "blankets"
+  | "first_aid"
+  | "other";
+
+type CreateIncidentResponse = {
+  success: boolean;
+  message: string;
+  data: {
+    _id: string;
+    title: string;
+    status?: string;
+  };
+};
+
+const categories: { label: string; value: IncidentCategory }[] = [
+  { label: "Flood", value: "flood" },
+  { label: "Fire", value: "fire" },
+  { label: "Storm", value: "storm" },
+  { label: "Landslide", value: "landslide" },
+  { label: "Earthquake", value: "earthquake" },
+  { label: "Road damage", value: "road_damage" },
+  { label: "Drainage", value: "drainage" },
+  { label: "Water shortage", value: "water_shortage" },
+  { label: "Waste", value: "waste" },
+  { label: "Other", value: "other" },
+];
+
+const needs: { label: string; value: UrgentNeed }[] = [
+  { label: "Drinking water", value: "drinking_water" },
+  { label: "Food", value: "food" },
+  { label: "Rescue", value: "rescue" },
+  { label: "Medical help", value: "medical_help" },
+  { label: "Shelter", value: "shelter" },
+  { label: "Blankets", value: "blankets" },
+  { label: "First aid", value: "first_aid" },
+];
 
 export default function ReportFormScreen({
   onBack,
   onSubmit,
 }: Props) {
-  const [location, setLocation] = useState("26.1445, 91.7362");
+  const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [urgency, setUrgency] = useState<Urgency>("Water");
-  const [photoCount, setPhotoCount] = useState(0);
+  const [location, setLocation] = useState("26.1445, 91.7362");
+  const [category, setCategory] = useState<IncidentCategory>("flood");
+  const [selectedNeeds, setSelectedNeeds] = useState<UrgentNeed[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = () => {
-    if (!description.trim()) {
+  function toggleNeed(need: UrgentNeed) {
+    setSelectedNeeds((current) =>
+      current.includes(need)
+        ? current.filter((item) => item !== need)
+        : [...current, need]
+    );
+  }
+
+  async function handleSubmit() {
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+    const cleanLocation = location.trim();
+
+    if (cleanTitle.length < 5) {
+      Alert.alert("Title required", "Enter a title with at least 5 characters.");
+      return;
+    }
+
+    if (cleanDescription.length < 10) {
       Alert.alert(
         "Description required",
-        "Please describe the incident before submitting."
+        "Describe the incident using at least 10 characters."
       );
       return;
     }
 
-    Alert.alert(
-      "Report submitted",
-      "Your report has been prepared. Connect a backend to save and share it with response teams.",
-      [
+    if (cleanLocation.length < 3) {
+      Alert.alert(
+        "Location required",
+        "Enter a location or address for this incident."
+      );
+      return;
+    }
+
+    if (selectedNeeds.length > 8) {
+      Alert.alert("Too many selections", "Select up to 8 urgent needs.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const result = await apiRequest<CreateIncidentResponse>(
+        "/incidents",
         {
-          text: "OK",
-          onPress: onSubmit,
-        },
-      ]
-    );
-  };
+          method: "POST",
+          body: {
+            title: cleanTitle,
+            description: cleanDescription,
+            category,
+            location: {
+              address: cleanLocation,
+            },
+            urgentNeeds: selectedNeeds,
+          },
+        }
+      );
+
+      Alert.alert(
+        "Report submitted",
+        `${result.message}\n\nReport ID: ${result.data._id}`,
+        [
+          {
+            text: "OK",
+            onPress: onSubmit,
+          },
+        ]
+      );
+    } catch (error) {
+      Alert.alert(
+        "Submission failed",
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F5FBFA" />
-
-      <View style={styles.statusBar}>
-        <Text style={styles.statusText}>9:41</Text>
-        <Text style={styles.statusText}>▴  ▰  ●</Text>
-      </View>
-
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.backButton}
-          accessibilityLabel="Go back"
-        >
-          <Text style={styles.backArrow}>‹</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>Flood Report</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <ScrollView
-        style={styles.scroll}
+        style={styles.container}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.label}>Location</Text>
+        <Pressable onPress={onBack} style={styles.backButton}>
+          <Text style={styles.backText}>‹ Back</Text>
+        </Pressable>
 
+        <Text style={styles.eyebrow}>COMMUNITY SAFETY</Text>
+        <Text style={styles.heading}>Report an incident</Text>
+        <Text style={styles.subtitle}>
+          Share accurate details so the community response team can assess the
+          situation.
+        </Text>
+
+        <Text style={styles.label}>Incident title *</Text>
         <TextInput
+          style={styles.input}
+          placeholder="e.g. Flooding near the main road"
+          placeholderTextColor="#8A94A6"
+          value={title}
+          onChangeText={setTitle}
+          maxLength={150}
+        />
+
+        <Text style={styles.label}>Incident category *</Text>
+        <View style={styles.chipContainer}>
+          {categories.map((item) => {
+            const active = category === item.value;
+
+            return (
+              <Pressable
+                key={item.value}
+                onPress={() => setCategory(item.value)}
+                style={[styles.chip, active && styles.activeChip]}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    active && styles.activeChipText,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.label}>Location or address *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter a nearby landmark or address"
+          placeholderTextColor="#8A94A6"
           value={location}
           onChangeText={setLocation}
-          style={styles.locationInput}
-          placeholder="Enter location coordinates"
-          placeholderTextColor="#829792"
-          accessibilityLabel="Location coordinates"
+          maxLength={300}
         />
+        <Text style={styles.helper}>
+          You can enter an address or landmark. GPS coordinates are not
+          automatically captured by this screen.
+        </Text>
 
-        <TouchableOpacity
-          activeOpacity={0.85}
-          style={styles.mapPreview}
-          onPress={() =>
-            Alert.alert(
-              "Location",
-              "Map selection can be connected in the next version."
-            )
-          }
-        >
-          <View style={styles.roadOne} />
-          <View style={styles.roadTwo} />
-          <View style={styles.roadThree} />
-          <View style={styles.greenAreaOne} />
-          <View style={styles.greenAreaTwo} />
-          <View style={styles.waterArea} />
-          <View style={styles.mapPin}>
-            <Text style={styles.mapPinText}>●</Text>
-          </View>
-          <Text style={styles.mapHint}>Tap to select location</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.label}>Description</Text>
-
+        <Text style={styles.label}>What happened? *</Text>
         <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Describe the incident, its severity, and any immediate danger..."
+          placeholderTextColor="#8A94A6"
           value={description}
           onChangeText={setDescription}
-          style={styles.descriptionInput}
-          placeholder="Water is entering our homes and road is blocked."
-          placeholderTextColor="#718681"
           multiline
           textAlignVertical="top"
-          maxLength={500}
-          accessibilityLabel="Incident description"
+          maxLength={5000}
         />
+        <Text style={styles.counter}>{description.length}/5000</Text>
 
-        <Text style={styles.characterCount}>
-          {description.length}/500
+        <Text style={styles.label}>Urgent needs</Text>
+        <Text style={styles.helper}>
+          Select any resources or assistance that are needed.
         </Text>
 
-        <View style={styles.photoHeader}>
-          <Text style={styles.label}>Photos (optional)</Text>
-          <Text style={styles.optionalHint}>Up to 3 photos</Text>
+        <View style={styles.chipContainer}>
+          {needs.map((item) => {
+            const active = selectedNeeds.includes(item.value);
+
+            return (
+              <Pressable
+                key={item.value}
+                onPress={() => toggleNeed(item.value)}
+                style={[styles.chip, active && styles.activeChip]}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    active && styles.activeChipText,
+                  ]}
+                >
+                  {active ? "✓ " : "+ "}
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <View style={styles.photoRow}>
-          {Array.from({ length: 3 }, (_, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.photoBox,
-                index < photoCount && styles.photoAdded,
-              ]}
-              onPress={() => {
-                if (index < photoCount) {
-                  Alert.alert(
-                    "Photo",
-                    "Photo gallery integration can be added next."
-                  );
-                  return;
-                }
-
-                if (photoCount < 3) {
-                  Alert.alert(
-                    "Add photo",
-                    "Camera and gallery access are not connected yet. This is a preview placeholder."
-                  );
-                }
-              }}
-            >
-              {index < photoCount ? (
-                <Text style={styles.photoEmoji}>🖼️</Text>
-              ) : (
-                <Text style={styles.photoPlus}>+</Text>
-              )}
-            </TouchableOpacity>
-          ))}
-
-          <TouchableOpacity
-            style={styles.addPhotoButton}
-            onPress={() => {
-              if (photoCount >= 3) {
-                Alert.alert("Photo limit", "You can add up to 3 photos.");
-              } else {
-                Alert.alert(
-                  "Photos",
-                  "Photo picker integration will be added next."
-                );
-              }
-            }}
-          >
-            <Text style={styles.addPhotoPlus}>+</Text>
-          </TouchableOpacity>
+        <View style={styles.notice}>
+          <Text style={styles.noticeTitle}>Before submitting</Text>
+          <Text style={styles.noticeText}>
+            Confirm the location and details are accurate. For an immediate
+            life-threatening emergency, contact the appropriate local emergency
+            service directly.
+          </Text>
         </View>
 
-        <Text style={styles.label}>Urgent Needs</Text>
-
-        <View style={styles.urgencyRow}>
-          <UrgencyButton
-            label="Water"
-            selected={urgency === "Water"}
-            color="#1685A8"
-            onPress={() => setUrgency("Water")}
-          />
-          <UrgencyButton
-            label="Food"
-            selected={urgency === "Food"}
-            color="#E49A35"
-            onPress={() => setUrgency("Food")}
-          />
-          <UrgencyButton
-            label="Rescue"
-            selected={urgency === "Rescue"}
-            color="#E45A5A"
-            onPress={() => setUrgency("Rescue")}
-          />
-        </View>
-
-        <TouchableOpacity
-          style={styles.submitButton}
+        <Pressable
           onPress={handleSubmit}
-          activeOpacity={0.85}
+          disabled={isSubmitting}
+          style={[
+            styles.submitButton,
+            isSubmitting && styles.disabledButton,
+          ]}
         >
-          <Text style={styles.submitText}>Submit Report</Text>
-        </TouchableOpacity>
+          {isSubmitting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.submitText}>Submit incident report →</Text>
+          )}
+        </Pressable>
 
-        <Text style={styles.footerNote}>
-          Please provide accurate information to help responders.
-        </Text>
+        <Pressable
+          onPress={onBack}
+          disabled={isSubmitting}
+          style={styles.cancelButton}
+        >
+          <Text style={styles.cancelText}>Cancel</Text>
+        </Pressable>
       </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-type UrgencyButtonProps = {
-  label: Urgency;
-  selected: boolean;
-  color: string;
-  onPress: () => void;
-};
-
-function UrgencyButton({
-  label,
-  selected,
-  color,
-  onPress,
-}: UrgencyButtonProps) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.urgencyButton,
-        {
-          borderColor: color,
-          backgroundColor: selected ? color : "#FFFFFF",
-        },
-      ]}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-    >
-      <Text
-        style={[
-          styles.urgencyText,
-          { color: selected ? "#FFFFFF" : color },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  flex: {
     flex: 1,
-    backgroundColor: "#F5FBFA",
+    backgroundColor: "#F5F7FB",
   },
-  statusBar: {
-    height: 25,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#284744",
-  },
-  header: {
-    minHeight: 48,
-    paddingHorizontal: 17,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2EFEC",
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    justifyContent: "center",
-  },
-  backArrow: {
-    fontSize: 32,
-    color: "#087C68",
-    lineHeight: 36,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#17443E",
-  },
-  headerSpacer: {
-    width: 38,
-  },
-  scroll: {
+  container: {
     flex: 1,
   },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 15,
-    paddingBottom: 24,
+    padding: 22,
+    paddingBottom: 40,
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 8,
+    paddingRight: 18,
+    marginBottom: 20,
+  },
+  backText: {
+    color: "#344054",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  eyebrow: {
+    color: "#167D76",
+    fontSize: 11,
+    letterSpacing: 2,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+  heading: {
+    color: "#172033",
+    fontSize: 29,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  subtitle: {
+    color: "#667085",
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 26,
   },
   label: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#31534E",
-    marginBottom: 7,
+    color: "#253047",
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 9,
+    marginTop: 19,
   },
-  locationInput: {
-    height: 39,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: "#CDE3DE",
+  input: {
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 11,
-    color: "#31534E",
-    fontSize: 12,
-    marginBottom: 7,
-  },
-  mapPreview: {
-    height: 105,
-    borderRadius: 12,
-    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#D5E8D9",
-    backgroundColor: "#E6F2E3",
-    marginBottom: 17,
-    justifyContent: "center",
-    alignItems: "center",
+    borderColor: "#DCE3ED",
+    borderRadius: 13,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: "#172033",
   },
-  roadOne: {
-    position: "absolute",
-    height: 13,
-    width: "120%",
-    backgroundColor: "#FFFFFF",
-    transform: [{ rotate: "-15deg" }],
+  textArea: {
+    minHeight: 130,
+    paddingTop: 14,
   },
-  roadTwo: {
-    position: "absolute",
-    height: 150,
-    width: 10,
-    left: "35%",
-    backgroundColor: "#FDFDF7",
-    transform: [{ rotate: "25deg" }],
-  },
-  roadThree: {
-    position: "absolute",
-    height: 9,
-    width: "100%",
-    top: 24,
-    backgroundColor: "#FDFDF7",
-    transform: [{ rotate: "13deg" }],
-  },
-  greenAreaOne: {
-    position: "absolute",
-    width: 80,
-    height: 45,
-    top: 5,
-    left: 12,
-    backgroundColor: "#C4E3BB",
-    borderRadius: 20,
-  },
-  greenAreaTwo: {
-    position: "absolute",
-    width: 95,
-    height: 35,
-    bottom: 4,
-    right: 10,
-    backgroundColor: "#B5DBAC",
-    borderRadius: 20,
-  },
-  waterArea: {
-    position: "absolute",
-    width: 50,
-    height: 20,
-    bottom: 12,
-    left: 15,
-    backgroundColor: "#B5E1E9",
-    borderRadius: 12,
-  },
-  mapPin: {
-    width: 29,
-    height: 29,
-    borderRadius: 15,
-    backgroundColor: "#1387F5",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#FFFFFF",
-    elevation: 3,
-  },
-  mapPinText: {
-    fontSize: 9,
-    color: "#FFFFFF",
-  },
-  mapHint: {
-    position: "absolute",
-    bottom: 5,
-    right: 7,
-    fontSize: 9,
-    color: "#42665C",
-    backgroundColor: "#FFFFFFCC",
-    paddingHorizontal: 5,
-    paddingVertical: 3,
-    borderRadius: 5,
-  },
-  descriptionInput: {
-    minHeight: 88,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#CDE3DE",
-    backgroundColor: "#FFFFFF",
-    padding: 11,
+  helper: {
+    color: "#7B8495",
     fontSize: 12,
     lineHeight: 18,
-    color: "#31534E",
+    marginTop: 7,
   },
-  characterCount: {
+  counter: {
     textAlign: "right",
-    fontSize: 10,
-    color: "#829792",
-    marginTop: 4,
-    marginBottom: 13,
+    color: "#8992A3",
+    fontSize: 11,
+    marginTop: 6,
   },
-  photoHeader: {
+  chipContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  optionalHint: {
-    fontSize: 10,
-    color: "#829792",
-    marginBottom: 7,
-  },
-  photoRow: {
-    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 9,
-    marginBottom: 18,
   },
-  photoBox: {
-    width: 55,
-    height: 49,
-    borderRadius: 8,
+  chip: {
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#D3E6E1",
-    backgroundColor: "#E8F1ED",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoAdded: {
-    backgroundColor: "#D8EDE5",
-  },
-  photoEmoji: {
-    fontSize: 20,
-  },
-  photoPlus: {
-    fontSize: 22,
-    color: "#829792",
-  },
-  addPhotoButton: {
-    width: 49,
-    height: 49,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#D3E6E1",
+    borderColor: "#DCE3ED",
     backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 13,
+    paddingVertical: 10,
   },
-  addPhotoPlus: {
-    fontSize: 25,
-    color: "#087C68",
+  activeChip: {
+    backgroundColor: "#DDF5F0",
+    borderColor: "#167D76",
   },
-  urgencyRow: {
-    flexDirection: "row",
-    gap: 9,
-    marginBottom: 22,
+  chipText: {
+    color: "#475467",
+    fontSize: 13,
+    fontWeight: "500",
   },
-  urgencyButton: {
-    paddingHorizontal: 15,
-    minHeight: 34,
-    borderWidth: 1,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  urgencyText: {
-    fontSize: 12,
+  activeChipText: {
+    color: "#12665F",
     fontWeight: "700",
   },
+  notice: {
+    backgroundColor: "#FFF7E8",
+    borderColor: "#F3D7A4",
+    borderWidth: 1,
+    borderRadius: 13,
+    padding: 14,
+    marginTop: 25,
+  },
+  noticeTitle: {
+    color: "#805B13",
+    fontWeight: "800",
+    fontSize: 13,
+    marginBottom: 5,
+  },
+  noticeText: {
+    color: "#725D34",
+    fontSize: 12,
+    lineHeight: 18,
+  },
   submitButton: {
-    minHeight: 48,
-    borderRadius: 10,
-    backgroundColor: "#087C68",
-    justifyContent: "center",
+    backgroundColor: "#167D76",
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: "center",
-    elevation: 2,
+    justifyContent: "center",
+    marginTop: 24,
+    minHeight: 54,
+  },
+  disabledButton: {
+    opacity: 0.65,
   },
   submitText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
   },
-  footerNote: {
-    marginTop: 12,
-    fontSize: 10,
-    lineHeight: 15,
-    textAlign: "center",
-    color: "#829792",
+  cancelButton: {
+    alignItems: "center",
+    paddingVertical: 15,
+  },
+  cancelText: {
+    color: "#667085",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

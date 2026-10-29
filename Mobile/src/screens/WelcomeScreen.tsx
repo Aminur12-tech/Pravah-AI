@@ -11,7 +11,7 @@ import {
 
 type WelcomeScreenProps = {
   onLogin: () => void;
-  onCreateAccount: () => void;
+  onSignUp: () => void;
 };
 
 const landscape = {
@@ -20,7 +20,7 @@ const landscape = {
 
 export default function WelcomeScreen({
   onLogin,
-  onCreateAccount,
+  onSignUp,
 }: WelcomeScreenProps) {
   return (
     <ImageBackground
@@ -28,8 +28,7 @@ export default function WelcomeScreen({
       resizeMode="cover"
       style={styles.background}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#164B43" />
-      <View style={styles.overlay} />
+      <StatusBar barStyle="light-content" />
 
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
@@ -61,7 +60,7 @@ export default function WelcomeScreen({
             <TouchableOpacity
               style={styles.signupButton}
               activeOpacity={0.85}
-              onPress={onCreateAccount}
+              onPress={onSignUp}
             >
               <Text style={styles.signupText}>Create Account</Text>
             </TouchableOpacity>
@@ -82,7 +81,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#103F38",
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(4, 45, 39, 0.38)",
   },
   safeArea: {
